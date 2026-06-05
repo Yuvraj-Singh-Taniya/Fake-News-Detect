@@ -1,0 +1,120 @@
+{
+  "logistic_regression": {
+    "split": "val",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "roc_auc": 1.0,
+    "confusion_matrix": [
+      [
+        60,
+        0
+      ],
+      [
+        0,
+        60
+      ]
+    ],
+    "cv_f1_mean": 1.0,
+    "cv_f1_std": 0.0,
+    "test": {
+      "split": "test",
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "roc_auc": 1.0,
+      "confusion_matrix": [
+        [
+          61,
+          0
+        ],
+        [
+          0,
+          60
+        ]
+      ]
+    }
+  },
+  "linear_svc": {
+    "split": "val",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "roc_auc": 1.0,
+    "confusion_matrix": [
+      [
+        60,
+        0
+      ],
+      [
+        0,
+        60
+      ]
+    ],
+    "cv_f1_mean": 1.0,
+    "cv_f1_std": 0.0
+  },
+  "naive_bayes": {
+    "split": "val",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "roc_auc": 1.0,
+    "confusion_matrix": [
+      [
+        60,
+        0
+      ],
+      [
+        0,
+        60
+      ]
+    ],
+    "cv_f1_mean": 1.0,
+    "cv_f1_std": 0.0
+  },
+  "random_forest": {
+    "split": "val",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "roc_auc": 1.0,
+    "confusion_matrix": [
+      [
+        60,
+        0
+      ],
+      [
+        0,
+        60
+      ]
+    ],
+    "cv_f1_mean": 1.0,
+    "cv_f1_std": 0.0
+  },
+  "gradient_boosting": {
+    "split": "val",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "roc_auc": 1.0,
+    "confusion_matrix": [
+      [
+        60,
+        0
+      ],
+      [
+        0,
+        60
+      ]
+    ],
+    "cv_f1_mean": 1.0,
+    "cv_f1_std": 0.0
+  }
+}
