@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000";;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 const fmt = (n) => (typeof n === "number" ? (n * 100).toFixed(1) + "%" : "—");
