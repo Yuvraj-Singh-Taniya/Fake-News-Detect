@@ -33,10 +33,7 @@ _predictor = None
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 app = Flask(__name__)
-CORS(app, origins=[
-    "https://fake-news-detect-9fhj.onrender.com/",
-    "http://localhost:3000"  # keep for local dev
-])
+CORS(app)
 
 # ── MongoDB setup ──────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get(
