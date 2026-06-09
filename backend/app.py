@@ -154,18 +154,14 @@ def run_fact_checks(title: str) -> dict:
     }
 
 
-def compute_combined_verdict(ml_label, ml_confidence, fact_checks, source_check) -> dict:
+def compute_combined_verdict(fact_checks, source_check) -> dict:
     """
     Combines three signals into a final fake/real score.
     Weights: ML=20%, NewsAPI source count=40%, Google Fact Check=40%
     Returns fake_score (0-100), real_score (0-100), final_label, final_verdict.
     """
 
-    # ── Signal 1: ML model (20% weight) ──────────────────────────────────
-    ml_fake_score = (1 - ml_confidence) if ml_label == "real" else ml_confidence
-    ml_real_score = 1 - ml_fake_score
-
-    # ── Signal 2: NewsAPI source count (40% weight) ───────────────────────
+    # ── Signal 1: NewsAPI source count (50% weight) ─────────────────────
     src_count = source_check.get("found_in_sources", 0) if source_check else 0
     # More sources = more likely real; scale 0-10+ sources to 0-1
     src_real = min(src_count / 8.0, 1.0)   # 8+ sources → fully real signal
@@ -198,12 +194,11 @@ def compute_combined_verdict(ml_label, ml_confidence, fact_checks, source_check)
         fc_real_score = 0.5
 
     # ── Weighted combination ──────────────────────────────────────────────
-    W_ML  = 0.20
-    W_SRC = 0.40
-    W_FC  = 0.40
+    W_SRC = 0.50
+    W_FC  = 0.50
 
-    final_fake = round((ml_fake_score * W_ML + src_fake * W_SRC + fc_fake_score * W_FC) * 100, 1)
-    final_real = round((ml_real_score * W_ML + src_real * W_SRC + fc_real_score * W_FC) * 100, 1)
+    final_fake = round((src_fake * W_SRC + fc_fake_score * W_FC) * 100, 1)
+    final_real = round((src_real * W_SRC + fc_real_score * W_FC) * 100, 1)
 
     # normalise to 100
     total = final_fake + final_real
@@ -234,9 +229,8 @@ def compute_combined_verdict(ml_label, ml_confidence, fact_checks, source_check)
         "combined_label":     final_label,
         "combined_verdict":   verdict,
         "signal_weights": {
-            "ml":        {"weight": "20%", "fake_score": round(ml_fake_score * 100, 1), "real_score": round(ml_real_score * 100, 1)},
-            "news_sources": {"weight": "40%", "fake_score": round(src_fake * 100, 1),  "real_score": round(src_real * 100, 1)},
-            "fact_check":   {"weight": "40%", "fake_score": round(fc_fake_score * 100, 1), "real_score": round(fc_real_score * 100, 1)},
+            "news_sources": {"weight": "50%", "fake_score": round(src_fake * 100, 1),  "real_score": round(src_real * 100, 1)},
+            "fact_check":   {"weight": "50%", "fake_score": round(fc_fake_score * 100, 1), "real_score": round(fc_real_score * 100, 1)},
         }
     }
 
@@ -317,10 +311,8 @@ def predict():
 
         # ── combined verdict (ML 20% + NewsAPI 40% + FactCheck 40%) ───────
         combined = compute_combined_verdict(
-            ml_label      = result["label"],
-            ml_confidence = result["confidence"],
-            fact_checks   = result["fact_checks"],
-            source_check  = result["source_check"],
+            fact_checks  = result["fact_checks"],
+            source_check = result["source_check"],
         )
         result.update(combined)
 
