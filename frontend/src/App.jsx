@@ -74,182 +74,210 @@ function FeatureBar({ word, score, direction }) {
   );
 }
 
-// ── Fact Check Panel ──────────────────────────────────────────────────────
-function FactCheckPanel({ factChecks, sourceCheck }) {
-  const hasFactChecks = factChecks && factChecks.length > 0;
-  const srcCount = sourceCheck?.found_in_sources ?? 0;
-  const srcVerdict = sourceCheck?.source_verification ?? "";
-  const topSources = sourceCheck?.top_sources ?? [];
+// ── Combined Verdict Banner ──────────────────────────────────────────────
+function CombinedVerdict({ result }) {
+  const fakePct = result.combined_fake_pct ?? null;
+  const realPct = result.combined_real_pct ?? null;
+  const label   = result.combined_label ?? result.label;
+  const verdict = result.combined_verdict ?? result.verdict;
+  const isFake  = label === "fake";
+  const color   = isFake ? "#f43f5e" : "#10b981";
 
-  const srcColor =
-    srcCount >= 5 ? "#10b981" :
-    srcCount >= 2 ? "#fbbf24" :
-    srcCount === 1 ? "#fb923c" :
-    "#f43f5e";
+  const signals = result.signal_weights ? [
+    { name: "ML Model",       weight: result.signal_weights.ml?.weight,          fake: result.signal_weights.ml?.fake_score,          real: result.signal_weights.ml?.real_score },
+    { name: "News Sources",   weight: result.signal_weights.news_sources?.weight, fake: result.signal_weights.news_sources?.fake_score, real: result.signal_weights.news_sources?.real_score },
+    { name: "Fact Check DB",  weight: result.signal_weights.fact_check?.weight,   fake: result.signal_weights.fact_check?.fake_score,   real: result.signal_weights.fact_check?.real_score },
+  ] : [];
 
-  const ratingColor = (rating) => {
-    if (!rating) return "#94a3b8";
-    const r = rating.toLowerCase();
-    if (r.includes("false") || r.includes("fake") || r.includes("incorrect") || r.includes("mislead")) return "#f43f5e";
-    if (r.includes("true") || r.includes("correct") || r.includes("accurate")) return "#10b981";
-    if (r.includes("mixed") || r.includes("partial") || r.includes("mostly")) return "#fbbf24";
-    return "#94a3b8";
-  };
-
-  return (
-    <div style={{ marginTop: 24, borderTop: "1px solid #1e293b", paddingTop: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-
-      {/* Source Verification (Option 2) */}
-      <div>
-        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
-          🔍 Source Verification
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-          <span style={{
-            fontFamily: "'Sora', sans-serif", fontSize: 22, fontWeight: 700, color: srcColor
-          }}>{srcCount}</span>
-          <span style={{ fontSize: 13, color: "#64748b", fontFamily: "'Sora', sans-serif" }}>
-            news source{srcCount !== 1 ? "s" : ""} found
-          </span>
-        </div>
-        <div style={{
-          padding: "8px 14px", borderRadius: 8, fontSize: 12,
-          background: `${srcColor}12`, border: `1px solid ${srcColor}30`,
-          color: srcColor, fontFamily: "'Sora', sans-serif", marginBottom: topSources.length > 0 ? 10 : 0
-        }}>
-          {srcVerdict}
-        </div>
-        {topSources.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {topSources.map((s, i) => (
-              <div key={i} style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "7px 12px", background: "#0f172a",
-                borderRadius: 8, border: "1px solid #1e293b"
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#475569", flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <a href={s.url} target="_blank" rel="noreferrer" style={{
-                    fontSize: 12, color: "#818cf8", fontFamily: "'Sora', sans-serif",
-                    textDecoration: "none", display: "block",
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
-                  }}>
-                    {s.name} ↗
-                  </a>
-                  {s.published && (
-                    <span style={{ fontSize: 10, color: "#334155", fontFamily: "'Sora', sans-serif" }}>
-                      {new Date(s.published).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Google Fact Check (Option 1) */}
-      <div>
-        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
-          ✅ Fact Check Database
-        </div>
-        {!hasFactChecks ? (
-          <div style={{
-            padding: "8px 14px", borderRadius: 8, fontSize: 12,
-            background: "#0f172a", border: "1px solid #1e293b",
-            color: "#334155", fontFamily: "'Sora', sans-serif"
-          }}>
-            No matching claims found in fact-check databases
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {factChecks.map((fc, i) => {
-              const rc = ratingColor(fc.rating);
-              return (
-                <div key={i} style={{
-                  background: "#0f172a", borderRadius: 10,
-                  border: `1px solid ${rc}25`, padding: "12px 14px"
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'Sora', sans-serif", lineHeight: 1.5, flex: 1 }}>
-                      {fc.claim}
-                    </span>
-                    {fc.rating && (
-                      <span style={{
-                        flexShrink: 0, fontSize: 11, fontWeight: 700,
-                        color: rc, background: `${rc}15`,
-                        border: `1px solid ${rc}35`,
-                        padding: "3px 10px", borderRadius: 5,
-                        fontFamily: "'Sora', sans-serif", whiteSpace: "nowrap"
-                      }}>
-                        {fc.rating}
-                      </span>
-                    )}
-                  </div>
-                  {fc.source && (
-                    <a href={fc.url || "#"} target="_blank" rel="noreferrer" style={{
-                      fontSize: 11, color: "#475569", fontFamily: "'Sora', sans-serif", textDecoration: "none"
-                    }}>
-                      {fc.source} ↗
-                    </a>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-function ResultCard({ result }) {
-  const isFake = result.label === "fake";
-  const color = VERDICT_COLOR[result.verdict] || (isFake ? "#f43f5e" : "#10b981");
   return (
     <div style={{
       background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
       border: `1px solid ${color}40`, borderRadius: 16, padding: "28px 32px",
       boxShadow: `0 0 40px ${color}20`, animation: "fadeSlide 0.4s ease"
     }}>
-      <div style={{ display: "flex", gap: 32, alignItems: "center", flexWrap: "wrap" }}>
-        <ConfidenceGauge value={result.confidence} label={result.label} isFake={isFake} />
-        <div style={{ flex: 1, minWidth: 200 }}>
+      {/* Final Verdict Header */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 10, fontFamily: "'Sora', sans-serif" }}>
+          Combined Verdict
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: 32, fontWeight: 800, color,
+            fontFamily: "'Sora', sans-serif", letterSpacing: -0.5
+          }}>
+            {isFake ? "FAKE" : "REAL"}
+          </span>
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             background: `${color}18`, border: `1px solid ${color}50`,
-            borderRadius: 8, padding: "6px 14px", marginBottom: 16
+            borderRadius: 8, padding: "6px 14px"
           }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "block" }} />
-            <span style={{ color, fontWeight: 700, fontSize: 13, letterSpacing: 0.5, fontFamily: "'Sora', sans-serif" }}>{result.verdict}</span>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+            <span style={{ color, fontWeight: 600, fontSize: 13, fontFamily: "'Sora', sans-serif" }}>{verdict}</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {Object.entries(result.probabilities).map(([k, v]) => (
-              <div key={k} style={{ background: "#0f172a", borderRadius: 10, padding: "12px 16px", border: `1px solid #1e293b` }}>
-                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'Sora', sans-serif", marginBottom: 4 }}>{k}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Sora', sans-serif", color: k === result.label ? color : "#475569" }}>{fmt(v)}</div>
+        </div>
+      </div>
+
+      {/* Fake / Real Score Bar */}
+      {fakePct !== null && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#f43f5e", fontFamily: "'Sora', sans-serif" }}>
+              Fake {fakePct}%
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#10b981", fontFamily: "'Sora', sans-serif" }}>
+              Real {realPct}%
+            </span>
+          </div>
+          <div style={{ display: "flex", height: 14, borderRadius: 8, overflow: "hidden", background: "#060f1e" }}>
+            <div style={{
+              width: `${fakePct}%`, background: "linear-gradient(90deg, #f43f5e, #fb7185)",
+              transition: "width 0.8s cubic-bezier(.4,0,.2,1)"
+            }} />
+            <div style={{
+              width: `${realPct}%`, background: "linear-gradient(90deg, #059669, #10b981)",
+              transition: "width 0.8s cubic-bezier(.4,0,.2,1)"
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* Signal Breakdown */}
+      {signals.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
+            Signal Breakdown
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {signals.map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 110, flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'Sora', sans-serif", marginBottom: 2 }}>{s.name}</div>
+                  <div style={{ fontSize: 10, color: "#334155", fontFamily: "'Sora', sans-serif" }}>weight {s.weight}</div>
+                </div>
+                <div style={{ flex: 1, height: 8, borderRadius: 4, overflow: "hidden", background: "#060f1e", display: "flex" }}>
+                  <div style={{ width: `${s.fake}%`, background: "#f43f5e", transition: "width 0.6s ease" }} />
+                  <div style={{ width: `${s.real}%`, background: "#10b981", transition: "width 0.6s ease" }} />
+                </div>
+                <span style={{ fontSize: 11, color: "#475569", fontFamily: "'Sora', sans-serif", width: 80, textAlign: "right", flexShrink: 0 }}>
+                  F:{s.fake}% R:{s.real}%
+                </span>
               </div>
             ))}
           </div>
         </div>
-      </div>
-      {result.top_features && result.top_features.length > 0 && (
-        <div style={{ marginTop: 24, borderTop: "1px solid #1e293b", paddingTop: 20 }}>
-          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 14, fontFamily: "'Sora', sans-serif" }}>Top Influential Words</div>
-          {result.top_features.slice(0, 8).map((f, i) => <FeatureBar key={i} {...f} />)}
+      )}
+
+      {/* Source Verification */}
+      {result.source_check && (
+        <div style={{ borderTop: "1px solid #1e293b", paddingTop: 20, marginBottom: 20 }}>
+          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
+            🔍 News Source Verification
+          </div>
+          {(() => {
+            const cnt = result.source_check.found_in_sources ?? 0;
+            const srcColor = cnt >= 5 ? "#10b981" : cnt >= 2 ? "#fbbf24" : cnt === 1 ? "#fb923c" : "#f43f5e";
+            return (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 28, fontWeight: 700, color: srcColor, fontFamily: "'Sora', sans-serif" }}>{cnt}</span>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'Sora', sans-serif" }}>sources found</div>
+                    <div style={{ fontSize: 12, color: srcColor, fontFamily: "'Sora', sans-serif" }}>{result.source_check.source_verification}</div>
+                  </div>
+                </div>
+                {(result.source_check.top_sources || []).length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {result.source_check.top_sources.map((s, i) => (
+                      <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{
+                        fontSize: 11, color: "#818cf8", background: "#6366f110",
+                        border: "1px solid #6366f130", padding: "4px 10px",
+                        borderRadius: 6, fontFamily: "'Sora', sans-serif", textDecoration: "none"
+                      }}>
+                        {s.name} ↗
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
-      {(result.fact_checks !== undefined || result.source_check !== undefined) && (
-        <FactCheckPanel
-          factChecks={result.fact_checks || []}
-          sourceCheck={result.source_check || {}}
-        />
-      )}
+
+      {/* Fact Check Results */}
+      <div style={{ borderTop: "1px solid #1e293b", paddingTop: 20, marginBottom: 20 }}>
+        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
+          ✅ Fact Check Database
+        </div>
+        {(!result.fact_checks || result.fact_checks.length === 0) ? (
+          <div style={{ fontSize: 12, color: "#334155", fontFamily: "'Sora', sans-serif", padding: "8px 14px", background: "#0f172a", borderRadius: 8, border: "1px solid #1e293b" }}>
+            No matching claims in fact-check databases
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {result.fact_checks.map((fc, i) => {
+              const r = (fc.rating || "").toLowerCase();
+              const rc = r.includes("false") || r.includes("fake") || r.includes("mislead") ? "#f43f5e"
+                : r.includes("true") || r.includes("correct") || r.includes("accurate") ? "#10b981"
+                : "#fbbf24";
+              return (
+                <div key={i} style={{ background: "#0f172a", borderRadius: 10, border: `1px solid ${rc}25`, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: fc.source ? 6 : 0 }}>
+                    <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'Sora', sans-serif", lineHeight: 1.5, flex: 1 }}>{fc.claim}</span>
+                    {fc.rating && (
+                      <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: rc, background: `${rc}15`, border: `1px solid ${rc}35`, padding: "3px 10px", borderRadius: 5, fontFamily: "'Sora', sans-serif", whiteSpace: "nowrap" }}>
+                        {fc.rating}
+                      </span>
+                    )}
+                  </div>
+                  {fc.source && <a href={fc.url || "#"} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#475569", fontFamily: "'Sora', sans-serif", textDecoration: "none" }}>{fc.source} ↗</a>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ML Model Detail (collapsed, for reference) */}
+      <div style={{ borderTop: "1px solid #1e293b", paddingTop: 20 }}>
+        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
+          🤖 ML Pattern Analysis <span style={{ color: "#1e293b", fontWeight: 400 }}>(20% weight)</span>
+        </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: result.top_features?.length > 0 ? 14 : 0 }}>
+          {Object.entries(result.probabilities || {}).map(([k, v]) => (
+            <div key={k} style={{ background: "#060f1e", borderRadius: 10, padding: "10px 16px", border: "1px solid #1e293b" }}>
+              <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'Sora', sans-serif", marginBottom: 4 }}>{k}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Sora', sans-serif", color: k === result.label ? (result.label === "fake" ? "#f43f5e" : "#10b981") : "#334155" }}>
+                {typeof v === "number" ? (v * 100).toFixed(1) + "%" : "—"}
+              </div>
+            </div>
+          ))}
+        </div>
+        {result.top_features && result.top_features.length > 0 && (
+          <>
+            <div style={{ fontSize: 11, color: "#334155", marginBottom: 10, fontFamily: "'Sora', sans-serif" }}>Top influential words:</div>
+            {result.top_features.slice(0, 6).map((f, i) => {
+              const abs = Math.abs(f.score);
+              const fc = f.direction === "fake" ? "#f43f5e" : "#10b981";
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                  <span style={{ width: 100, fontSize: 11, color: "#475569", fontFamily: "'JetBrains Mono', monospace", textAlign: "right", flexShrink: 0 }}>{f.word}</span>
+                  <div style={{ flex: 1, background: "#0f172a", borderRadius: 3, overflow: "hidden", height: 6 }}>
+                    <div style={{ height: "100%", width: `${Math.min(100, abs * 800)}%`, background: fc, borderRadius: 3 }} />
+                  </div>
+                  <span style={{ width: 50, fontSize: 10, color: fc, fontFamily: "'JetBrains Mono', monospace" }}>{f.score > 0 ? "+" : ""}{f.score.toFixed(3)}</span>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
+// ── Detect Tab ────────────────────────────────────────────────────────────
 // ── Detect Tab ────────────────────────────────────────────────────────────
 function DetectTab() {
   const [title, setTitle] = useState("");
@@ -336,7 +364,7 @@ function DetectTab() {
           ⚠ {error}
         </div>
       )}
-      {result && <ResultCard result={result} />}
+      {result && <CombinedVerdict result={result} />}
     </div>
   );
 }
