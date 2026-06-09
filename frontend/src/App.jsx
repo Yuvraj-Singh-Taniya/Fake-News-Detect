@@ -74,7 +74,136 @@ function FeatureBar({ word, score, direction }) {
   );
 }
 
-// ── Result Card ───────────────────────────────────────────────────────────
+// ── Fact Check Panel ──────────────────────────────────────────────────────
+function FactCheckPanel({ factChecks, sourceCheck }) {
+  const hasFactChecks = factChecks && factChecks.length > 0;
+  const srcCount = sourceCheck?.found_in_sources ?? 0;
+  const srcVerdict = sourceCheck?.source_verification ?? "";
+  const topSources = sourceCheck?.top_sources ?? [];
+
+  const srcColor =
+    srcCount >= 5 ? "#10b981" :
+    srcCount >= 2 ? "#fbbf24" :
+    srcCount === 1 ? "#fb923c" :
+    "#f43f5e";
+
+  const ratingColor = (rating) => {
+    if (!rating) return "#94a3b8";
+    const r = rating.toLowerCase();
+    if (r.includes("false") || r.includes("fake") || r.includes("incorrect") || r.includes("mislead")) return "#f43f5e";
+    if (r.includes("true") || r.includes("correct") || r.includes("accurate")) return "#10b981";
+    if (r.includes("mixed") || r.includes("partial") || r.includes("mostly")) return "#fbbf24";
+    return "#94a3b8";
+  };
+
+  return (
+    <div style={{ marginTop: 24, borderTop: "1px solid #1e293b", paddingTop: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* Source Verification (Option 2) */}
+      <div>
+        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
+          🔍 Source Verification
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+          <span style={{
+            fontFamily: "'Sora', sans-serif", fontSize: 22, fontWeight: 700, color: srcColor
+          }}>{srcCount}</span>
+          <span style={{ fontSize: 13, color: "#64748b", fontFamily: "'Sora', sans-serif" }}>
+            news source{srcCount !== 1 ? "s" : ""} found
+          </span>
+        </div>
+        <div style={{
+          padding: "8px 14px", borderRadius: 8, fontSize: 12,
+          background: `${srcColor}12`, border: `1px solid ${srcColor}30`,
+          color: srcColor, fontFamily: "'Sora', sans-serif", marginBottom: topSources.length > 0 ? 10 : 0
+        }}>
+          {srcVerdict}
+        </div>
+        {topSources.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {topSources.map((s, i) => (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "7px 12px", background: "#0f172a",
+                borderRadius: 8, border: "1px solid #1e293b"
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#475569", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <a href={s.url} target="_blank" rel="noreferrer" style={{
+                    fontSize: 12, color: "#818cf8", fontFamily: "'Sora', sans-serif",
+                    textDecoration: "none", display: "block",
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                  }}>
+                    {s.name} ↗
+                  </a>
+                  {s.published && (
+                    <span style={{ fontSize: 10, color: "#334155", fontFamily: "'Sora', sans-serif" }}>
+                      {new Date(s.published).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Google Fact Check (Option 1) */}
+      <div>
+        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
+          ✅ Fact Check Database
+        </div>
+        {!hasFactChecks ? (
+          <div style={{
+            padding: "8px 14px", borderRadius: 8, fontSize: 12,
+            background: "#0f172a", border: "1px solid #1e293b",
+            color: "#334155", fontFamily: "'Sora', sans-serif"
+          }}>
+            No matching claims found in fact-check databases
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {factChecks.map((fc, i) => {
+              const rc = ratingColor(fc.rating);
+              return (
+                <div key={i} style={{
+                  background: "#0f172a", borderRadius: 10,
+                  border: `1px solid ${rc}25`, padding: "12px 14px"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'Sora', sans-serif", lineHeight: 1.5, flex: 1 }}>
+                      {fc.claim}
+                    </span>
+                    {fc.rating && (
+                      <span style={{
+                        flexShrink: 0, fontSize: 11, fontWeight: 700,
+                        color: rc, background: `${rc}15`,
+                        border: `1px solid ${rc}35`,
+                        padding: "3px 10px", borderRadius: 5,
+                        fontFamily: "'Sora', sans-serif", whiteSpace: "nowrap"
+                      }}>
+                        {fc.rating}
+                      </span>
+                    )}
+                  </div>
+                  {fc.source && (
+                    <a href={fc.url || "#"} target="_blank" rel="noreferrer" style={{
+                      fontSize: 11, color: "#475569", fontFamily: "'Sora', sans-serif", textDecoration: "none"
+                    }}>
+                      {fc.source} ↗
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function ResultCard({ result }) {
   const isFake = result.label === "fake";
   const color = VERDICT_COLOR[result.verdict] || (isFake ? "#f43f5e" : "#10b981");
@@ -110,6 +239,12 @@ function ResultCard({ result }) {
           <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 14, fontFamily: "'Sora', sans-serif" }}>Top Influential Words</div>
           {result.top_features.slice(0, 8).map((f, i) => <FeatureBar key={i} {...f} />)}
         </div>
+      )}
+      {(result.fact_checks !== undefined || result.source_check !== undefined) && (
+        <FactCheckPanel
+          factChecks={result.fact_checks || []}
+          sourceCheck={result.source_check || {}}
+        />
       )}
     </div>
   );
