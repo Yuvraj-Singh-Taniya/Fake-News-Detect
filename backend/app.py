@@ -60,9 +60,98 @@ MONGO_URI = os.environ.get(
     "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/fakenews?retryWrites=true&w=majority"
 )
 
-NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
+NEWS_API_KEY    = os.environ.get("NEWS_API_KEY", "")
+GOOGLE_API_KEY  = os.environ.get("GOOGLE_API_KEY", "")
 
 _db = None
+
+
+# ── fact-check helpers ────────────────────────────────────────────────────────
+
+def run_fact_checks(title: str) -> dict:
+    """
+    Run both Google Fact Check API (Option 1) and NewsAPI source verification
+    (Option 2) in parallel and return a combined verification dict.
+    """
+    import concurrent.futures
+
+    def google_fact_check(query):
+        if not GOOGLE_API_KEY or not query:
+            return []
+        try:
+            url = (
+                "https://factchecktools.googleapis.com/v1alpha1/claims:search"
+                f"?query={req.utils.quote(query)}&pageSize=5&key={GOOGLE_API_KEY}"
+            )
+            resp = req.get(url, timeout=8)
+            claims = resp.json().get("claims", [])
+            results = []
+            for c in claims[:3]:
+                review = (c.get("claimReview") or [{}])[0]
+                results.append({
+                    "claim":   c.get("text", ""),
+                    "rating":  review.get("textualRating", ""),
+                    "source":  review.get("publisher", {}).get("name", ""),
+                    "url":     review.get("url", ""),
+                })
+            return results
+        except Exception:
+            return []
+
+    def newsapi_source_check(query):
+        if not NEWS_API_KEY or not query:
+            return {"found_in_sources": 0, "source_verification": "API key not configured", "top_sources": []}
+        try:
+            url = (
+                "https://newsapi.org/v2/everything"
+                f"?q={req.utils.quote(query)}&pageSize=10&sortBy=relevancy"
+                f"&language=en&apiKey={NEWS_API_KEY}"
+            )
+            resp     = req.get(url, timeout=8)
+            articles = resp.json().get("articles", [])
+            # filter out removed articles
+            articles = [a for a in articles if a.get("title") and a["title"] != "[Removed]"]
+            count    = len(articles)
+
+            if count >= 5:
+                verdict = "Widely reported — found in multiple credible sources"
+            elif count >= 2:
+                verdict = "Found in a few sources — limited coverage"
+            elif count == 1:
+                verdict = "Found in only one source — verify independently"
+            else:
+                verdict = "Not found in news sources — could not verify"
+
+            top_sources = []
+            seen = set()
+            for a in articles[:5]:
+                src_name = (a.get("source") or {}).get("name", "")
+                if src_name and src_name not in seen:
+                    seen.add(src_name)
+                    top_sources.append({
+                        "name":      src_name,
+                        "url":       a.get("url", ""),
+                        "published": a.get("publishedAt", ""),
+                    })
+
+            return {
+                "found_in_sources":    count,
+                "source_verification": verdict,
+                "top_sources":         top_sources,
+            }
+        except Exception as e:
+            return {"found_in_sources": 0, "source_verification": f"Check failed: {e}", "top_sources": []}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        fc_future  = ex.submit(google_fact_check, title)
+        src_future = ex.submit(newsapi_source_check, title)
+        fact_checks    = fc_future.result()
+        source_check   = src_future.result()
+
+    return {
+        "fact_checks":   fact_checks,
+        "source_check":  source_check,
+    }
 
 def get_db():
     global _db
@@ -127,6 +216,17 @@ def predict():
         if explain:
             result["top_features"] = predictor.top_features(title=title, text=text)
 
+        # ── live verification (Option 1 + Option 2 combined) ──────────────
+        if title:
+            verification = run_fact_checks(title)
+            result["fact_checks"]  = verification["fact_checks"]
+            result["source_check"] = verification["source_check"]
+        else:
+            result["fact_checks"]  = []
+            result["source_check"] = {"found_in_sources": 0,
+                                      "source_verification": "No title provided for verification",
+                                      "top_sources": []}
+
         record = {
             "title":         title,
             "text":          text[:2000],
@@ -136,6 +236,8 @@ def predict():
             "verdict":       result["verdict"],
             "probabilities": result["probabilities"],
             "top_features":  result.get("top_features", []),
+            "fact_checks":   result.get("fact_checks", []),
+            "source_check":  result.get("source_check", {}),
             "created_at":    datetime.now(timezone.utc),
         }
         try:
@@ -380,6 +482,20 @@ def search_news():
 
     except Exception as e:
         traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── /verify ───────────────────────────────────────────────────────────────────
+
+@app.get("/verify")
+def verify():
+    """Standalone fact-check + source verification for a query string."""
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify({"error": "Provide ?q= parameter"}), 400
+    try:
+        return jsonify(run_fact_checks(query))
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
