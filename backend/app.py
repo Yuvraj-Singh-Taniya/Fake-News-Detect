@@ -153,6 +153,94 @@ def run_fact_checks(title: str) -> dict:
         "source_check":  source_check,
     }
 
+
+def compute_combined_verdict(ml_label, ml_confidence, fact_checks, source_check) -> dict:
+    """
+    Combines three signals into a final fake/real score.
+    Weights: ML=20%, NewsAPI source count=40%, Google Fact Check=40%
+    Returns fake_score (0-100), real_score (0-100), final_label, final_verdict.
+    """
+
+    # ── Signal 1: ML model (20% weight) ──────────────────────────────────
+    ml_fake_score = (1 - ml_confidence) if ml_label == "real" else ml_confidence
+    ml_real_score = 1 - ml_fake_score
+
+    # ── Signal 2: NewsAPI source count (40% weight) ───────────────────────
+    src_count = source_check.get("found_in_sources", 0) if source_check else 0
+    # More sources = more likely real; scale 0-10+ sources to 0-1
+    src_real = min(src_count / 8.0, 1.0)   # 8+ sources → fully real signal
+    src_fake = 1 - src_real
+
+    # ── Signal 3: Google Fact Check (40% weight) ──────────────────────────
+    fc_fake = 0.0
+    fc_real = 0.0
+    fc_neutral = 0.0
+
+    if fact_checks:
+        for fc in fact_checks:
+            rating = (fc.get("rating") or "").lower()
+            if any(w in rating for w in ["false", "fake", "incorrect", "mislead", "fabricat", "pants on fire"]):
+                fc_fake += 1
+            elif any(w in rating for w in ["true", "correct", "accurate", "verified"]):
+                fc_real += 1
+            else:
+                fc_neutral += 1
+
+        total_fc = fc_fake + fc_real + fc_neutral or 1
+        fc_fake_score = fc_fake / total_fc
+        fc_real_score = fc_real / total_fc
+        # neutral claims split evenly
+        fc_fake_score += (fc_neutral / total_fc) * 0.5
+        fc_real_score += (fc_neutral / total_fc) * 0.5
+    else:
+        # No fact-check data — treat as neutral, split 50/50
+        fc_fake_score = 0.5
+        fc_real_score = 0.5
+
+    # ── Weighted combination ──────────────────────────────────────────────
+    W_ML  = 0.20
+    W_SRC = 0.40
+    W_FC  = 0.40
+
+    final_fake = round((ml_fake_score * W_ML + src_fake * W_SRC + fc_fake_score * W_FC) * 100, 1)
+    final_real = round((ml_real_score * W_ML + src_real * W_SRC + fc_real_score * W_FC) * 100, 1)
+
+    # normalise to 100
+    total = final_fake + final_real
+    if total > 0:
+        final_fake = round(final_fake / total * 100, 1)
+        final_real = round(100 - final_fake, 1)
+
+    final_label = "fake" if final_fake >= 50 else "real"
+
+    if final_fake >= 80:
+        verdict = "Almost certainly fake"
+    elif final_fake >= 65:
+        verdict = "Very likely fake"
+    elif final_fake >= 55:
+        verdict = "Likely fake"
+    elif final_fake >= 45:
+        verdict = "Uncertain — manual review recommended"
+    elif final_fake >= 35:
+        verdict = "Likely real"
+    elif final_fake >= 20:
+        verdict = "Very likely real"
+    else:
+        verdict = "Almost certainly real"
+
+    return {
+        "combined_fake_pct":  final_fake,
+        "combined_real_pct":  final_real,
+        "combined_label":     final_label,
+        "combined_verdict":   verdict,
+        "signal_weights": {
+            "ml":        {"weight": "20%", "fake_score": round(ml_fake_score * 100, 1), "real_score": round(ml_real_score * 100, 1)},
+            "news_sources": {"weight": "40%", "fake_score": round(src_fake * 100, 1),  "real_score": round(src_real * 100, 1)},
+            "fact_check":   {"weight": "40%", "fake_score": round(fc_fake_score * 100, 1), "real_score": round(fc_real_score * 100, 1)},
+        }
+    }
+
+
 def get_db():
     global _db
     if _db is None:
@@ -227,6 +315,15 @@ def predict():
                                       "source_verification": "No title provided for verification",
                                       "top_sources": []}
 
+        # ── combined verdict (ML 20% + NewsAPI 40% + FactCheck 40%) ───────
+        combined = compute_combined_verdict(
+            ml_label      = result["label"],
+            ml_confidence = result["confidence"],
+            fact_checks   = result["fact_checks"],
+            source_check  = result["source_check"],
+        )
+        result.update(combined)
+
         record = {
             "title":         title,
             "text":          text[:2000],
@@ -236,9 +333,13 @@ def predict():
             "verdict":       result["verdict"],
             "probabilities": result["probabilities"],
             "top_features":  result.get("top_features", []),
-            "fact_checks":   result.get("fact_checks", []),
-            "source_check":  result.get("source_check", {}),
-            "created_at":    datetime.now(timezone.utc),
+            "fact_checks":         result.get("fact_checks", []),
+            "source_check":        result.get("source_check", {}),
+            "combined_fake_pct":   result.get("combined_fake_pct"),
+            "combined_real_pct":   result.get("combined_real_pct"),
+            "combined_label":      result.get("combined_label"),
+            "combined_verdict":    result.get("combined_verdict"),
+            "created_at":          datetime.now(timezone.utc),
         }
         try:
             inserted = get_db()["predictions"].insert_one(record)
