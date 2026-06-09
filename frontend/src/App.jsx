@@ -84,9 +84,8 @@ function CombinedVerdict({ result }) {
   const color   = isFake ? "#f43f5e" : "#10b981";
 
   const signals = result.signal_weights ? [
-    { name: "ML Model",       weight: result.signal_weights.ml?.weight,          fake: result.signal_weights.ml?.fake_score,          real: result.signal_weights.ml?.real_score },
-    { name: "News Sources",   weight: result.signal_weights.news_sources?.weight, fake: result.signal_weights.news_sources?.fake_score, real: result.signal_weights.news_sources?.real_score },
-    { name: "Fact Check DB",  weight: result.signal_weights.fact_check?.weight,   fake: result.signal_weights.fact_check?.fake_score,   real: result.signal_weights.fact_check?.real_score },
+    { name: "News Sources",  weight: result.signal_weights.news_sources?.weight, fake: result.signal_weights.news_sources?.fake_score, real: result.signal_weights.news_sources?.real_score },
+    { name: "Fact Check DB", weight: result.signal_weights.fact_check?.weight,   fake: result.signal_weights.fact_check?.fake_score,   real: result.signal_weights.fact_check?.real_score },
   ] : [];
 
   return (
@@ -206,7 +205,7 @@ function CombinedVerdict({ result }) {
       )}
 
       {/* Fact Check Results */}
-      <div style={{ borderTop: "1px solid #1e293b", paddingTop: 20, marginBottom: 20 }}>
+      <div style={{ borderTop: "1px solid #1e293b", paddingTop: 20 }}>
         <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
           ✅ Fact Check Database
         </div>
@@ -239,40 +238,7 @@ function CombinedVerdict({ result }) {
         )}
       </div>
 
-      {/* ML Model Detail (collapsed, for reference) */}
-      <div style={{ borderTop: "1px solid #1e293b", paddingTop: 20 }}>
-        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontFamily: "'Sora', sans-serif" }}>
-          🤖 ML Pattern Analysis <span style={{ color: "#1e293b", fontWeight: 400 }}>(20% weight)</span>
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: result.top_features?.length > 0 ? 14 : 0 }}>
-          {Object.entries(result.probabilities || {}).map(([k, v]) => (
-            <div key={k} style={{ background: "#060f1e", borderRadius: 10, padding: "10px 16px", border: "1px solid #1e293b" }}>
-              <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'Sora', sans-serif", marginBottom: 4 }}>{k}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Sora', sans-serif", color: k === result.label ? (result.label === "fake" ? "#f43f5e" : "#10b981") : "#334155" }}>
-                {typeof v === "number" ? (v * 100).toFixed(1) + "%" : "—"}
-              </div>
-            </div>
-          ))}
-        </div>
-        {result.top_features && result.top_features.length > 0 && (
-          <>
-            <div style={{ fontSize: 11, color: "#334155", marginBottom: 10, fontFamily: "'Sora', sans-serif" }}>Top influential words:</div>
-            {result.top_features.slice(0, 6).map((f, i) => {
-              const abs = Math.abs(f.score);
-              const fc = f.direction === "fake" ? "#f43f5e" : "#10b981";
-              return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
-                  <span style={{ width: 100, fontSize: 11, color: "#475569", fontFamily: "'JetBrains Mono', monospace", textAlign: "right", flexShrink: 0 }}>{f.word}</span>
-                  <div style={{ flex: 1, background: "#0f172a", borderRadius: 3, overflow: "hidden", height: 6 }}>
-                    <div style={{ height: "100%", width: `${Math.min(100, abs * 800)}%`, background: fc, borderRadius: 3 }} />
-                  </div>
-                  <span style={{ width: 50, fontSize: 10, color: fc, fontFamily: "'JetBrains Mono', monospace" }}>{f.score > 0 ? "+" : ""}{f.score.toFixed(3)}</span>
-                </div>
-              );
-            })}
-          </>
-        )}
-      </div>
+
     </div>
   );
 }
@@ -283,7 +249,6 @@ function DetectTab() {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [source, setSource] = useState("");
-  const [explain, setExplain] = useState(true);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -295,7 +260,7 @@ function DetectTab() {
       const res = await fetch(`${API}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, text, source, explain }),
+        body: JSON.stringify({ title, text, source }),
       });
       const data = await res.json();
       if (data.error) setError(data.error);
@@ -325,24 +290,7 @@ function DetectTab() {
             <label style={labelStyle}>Source URL <span style={{ color: "#334155" }}>(optional)</span></label>
             <input value={source} onChange={e => setSource(e.target.value)} placeholder="https://…" style={inputStyle} />
           </div>
-          <label style={{
-            display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-            padding: "12px 18px", background: "#0f172a", borderRadius: 10,
-            border: `1px solid ${explain ? "#6366f1" : "#1e293b"}`,
-            color: explain ? "#818cf8" : "#475569",
-            fontFamily: "'Sora', sans-serif", fontSize: 13, fontWeight: 500,
-            transition: "all 0.2s", userSelect: "none", whiteSpace: "nowrap"
-          }}>
-            <input type="checkbox" checked={explain} onChange={e => setExplain(e.target.checked)} style={{ display: "none" }} />
-            <span style={{
-              width: 16, height: 16, borderRadius: 4, border: `2px solid ${explain ? "#6366f1" : "#334155"}`,
-              background: explain ? "#6366f1" : "transparent", display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "all 0.2s", flexShrink: 0
-            }}>
-              {explain && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </span>
-            Show explanations
-          </label>
+
         </div>
       </div>
       <button onClick={handleSubmit} disabled={loading} style={{
