@@ -14,6 +14,8 @@ GET  /models              → list available models
 GET  /history             → paginated prediction history from MongoDB
 GET  /analytics           → aggregated stats from MongoDB
 DELETE /history/<id>      → delete a prediction record
+GET  /news/latest         → fetch & analyze latest headlines
+GET  /news/search?q=      → search & analyze news by keyword
 """
 
 import json
@@ -27,6 +29,7 @@ from pymongo import MongoClient, DESCENDING
 from bson import ObjectId
 from bson.json_util import dumps
 import os
+import requests as req
 
 # ── app setup ──────────────────────────────────────────────────────────────────
 _predictor = None
@@ -34,6 +37,7 @@ MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 app = Flask(__name__)
 CORS(app)
+
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -55,6 +59,8 @@ MONGO_URI = os.environ.get(
     "MONGO_URI",
     "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/fakenews?retryWrites=true&w=majority"
 )
+
+NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
 
 _db = None
 
@@ -110,7 +116,7 @@ def predict():
         title   = str(body.get("title", "")).strip()
         text    = str(body.get("text",  "")).strip()
         explain = bool(body.get("explain", False))
-        source  = str(body.get("source", "")).strip()  # optional source URL
+        source  = str(body.get("source", "")).strip()
 
         if not title and not text:
             return jsonify({"error": "Provide at least one of 'title' or 'text'."}), 400
@@ -121,17 +127,16 @@ def predict():
         if explain:
             result["top_features"] = predictor.top_features(title=title, text=text)
 
-        # ── save to MongoDB ────────────────────────────────────────────────────
         record = {
-            "title":       title,
-            "text":        text[:2000],  # cap stored text to 2KB
-            "source":      source,
-            "label":       result["label"],
-            "confidence":  result["confidence"],
-            "verdict":     result["verdict"],
+            "title":         title,
+            "text":          text[:2000],
+            "source":        source,
+            "label":         result["label"],
+            "confidence":    result["confidence"],
+            "verdict":       result["verdict"],
             "probabilities": result["probabilities"],
-            "top_features": result.get("top_features", []),
-            "created_at":  datetime.now(timezone.utc),
+            "top_features":  result.get("top_features", []),
+            "created_at":    datetime.now(timezone.utc),
         }
         try:
             inserted = get_db()["predictions"].insert_one(record)
@@ -163,9 +168,8 @@ def predict_batch():
         out       = predictor.predict_batch(df)
         records   = out.to_dict(orient="records")
 
-        # bulk insert
         try:
-            now = datetime.now(timezone.utc)
+            now  = datetime.now(timezone.utc)
             docs = [{**r, "created_at": now, "batch": True} for r in records]
             get_db()["predictions"].insert_many(docs)
         except Exception:
@@ -205,11 +209,10 @@ def list_models():
 
 @app.get("/history")
 def history():
-    """Return paginated prediction history."""
     try:
         page     = max(1, int(request.args.get("page", 1)))
         per_page = min(50, int(request.args.get("per_page", 10)))
-        label    = request.args.get("label")        # filter: fake|real
+        label    = request.args.get("label")
         skip     = (page - 1) * per_page
 
         query = {}
@@ -235,9 +238,8 @@ def history():
 
 @app.get("/analytics")
 def analytics():
-    """Return aggregated analytics from stored predictions."""
     try:
-        col = get_db()["predictions"]
+        col   = get_db()["predictions"]
         total = col.count_documents({})
 
         if total == 0:
@@ -248,20 +250,16 @@ def analytics():
         fake_count = col.count_documents({"label": "fake"})
         real_count = col.count_documents({"label": "real"})
 
-        # average confidence
-        agg = list(col.aggregate([
-            {"$group": {"_id": None, "avg_conf": {"$avg": "$confidence"}}}
-        ]))
+        agg      = list(col.aggregate([{"$group": {"_id": None, "avg_conf": {"$avg": "$confidence"}}}]))
         avg_conf = round(agg[0]["avg_conf"], 4) if agg else 0
 
-        # last 7 days daily breakdown
         from datetime import timedelta
         trend = []
         for i in range(6, -1, -1):
             day_start = datetime.now(timezone.utc).replace(
                 hour=0, minute=0, second=0, microsecond=0
             ) - timedelta(days=i)
-            day_end = day_start + timedelta(days=1)
+            day_end   = day_start + timedelta(days=1)
             day_total = col.count_documents({"created_at": {"$gte": day_start, "$lt": day_end}})
             day_fake  = col.count_documents({"created_at": {"$gte": day_start, "$lt": day_end}, "label": "fake"})
             trend.append({
@@ -295,6 +293,93 @@ def delete_history(record_id):
             return jsonify({"error": "Record not found."}), 404
         return jsonify({"deleted": True})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── /news/latest ──────────────────────────────────────────────────────────────
+
+@app.get("/news/latest")
+def latest_news():
+    """Fetch latest headlines and auto-analyze them."""
+    if not NEWS_API_KEY:
+        return jsonify({"error": "NEWS_API_KEY not configured."}), 503
+    try:
+        url      = f"https://newsapi.org/v2/top-headlines?country=us&pageSize=20&apiKey={NEWS_API_KEY}"
+        response = req.get(url, timeout=10)
+        articles = response.json().get("articles", [])
+
+        predictor = get_predictor()
+        results   = []
+
+        for article in articles:
+            title       = article.get("title", "") or ""
+            description = article.get("description", "") or ""
+            source      = article.get("url", "")
+
+            if not title or title == "[Removed]":
+                continue
+
+            prediction = predictor.predict(title=title, text=description)
+            results.append({
+                "title":      title,
+                "source":     source,
+                "image":      article.get("urlToImage", ""),
+                "published":  article.get("publishedAt", ""),
+                "label":      prediction["label"],
+                "confidence": prediction["confidence"],
+                "verdict":    prediction["verdict"],
+            })
+
+        return jsonify(results)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── /news/search ──────────────────────────────────────────────────────────────
+
+@app.get("/news/search")
+def search_news():
+    """Search news by keyword and analyze."""
+    if not NEWS_API_KEY:
+        return jsonify({"error": "NEWS_API_KEY not configured."}), 503
+
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify({"error": "Provide a search query ?q="}), 400
+
+    try:
+        url      = f"https://newsapi.org/v2/everything?q={query}&pageSize=15&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
+        response = req.get(url, timeout=10)
+        articles = response.json().get("articles", [])
+
+        predictor = get_predictor()
+        results   = []
+
+        for article in articles:
+            title  = article.get("title", "") or ""
+            text   = article.get("description", "") or ""
+            source = article.get("url", "")
+
+            if not title or title == "[Removed]":
+                continue
+
+            prediction = predictor.predict(title=title, text=text)
+            results.append({
+                "title":      title,
+                "source":     source,
+                "image":      article.get("urlToImage", ""),
+                "published":  article.get("publishedAt", ""),
+                "label":      prediction["label"],
+                "confidence": prediction["confidence"],
+                "verdict":    prediction["verdict"],
+            })
+
+        return jsonify(results)
+
+    except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
